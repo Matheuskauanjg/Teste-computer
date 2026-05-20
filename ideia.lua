@@ -1,4 +1,5 @@
-local repoApi = "https://api.github.com/repos/Matheuskauanjg/Teste-computer/contents"
+local repoApi =
+"https://api.github.com/repos/Matheuskauanjg/Teste-computer/contents"
 
 local dfpwm = require("cc.audio.dfpwm")
 
@@ -10,13 +11,17 @@ for _, name in ipairs(peripheral.getNames()) do
     end
 end
 
-if #speakers == 0 then
+local function clear()
     term.clear()
     term.setCursorPos(1,1)
+end
 
+clear()
+
+if #speakers == 0 then
     print("Nenhum speaker encontrado!")
     print("")
-    print("Perifericos encontrados:")
+    print("Perifericos detectados:")
     print("")
 
     for _, name in ipairs(peripheral.getNames()) do
@@ -26,10 +31,8 @@ if #speakers == 0 then
     return
 end
 
-term.clear()
-term.setCursorPos(1,1)
-
-print("Buscando musicas...")
+print("Conectando ao GitHub...")
+sleep(1)
 
 local response = http.get(repoApi)
 
@@ -46,12 +49,21 @@ local songs = {}
 for _, file in ipairs(data) do
     if file.name and file.name:match("%.dfpwm$") then
 
-        local encoded = textutils.urlEncode(file.name)
+        local fixed =
+            file.name
+                :gsub(" ", "%%20")
+                :gsub("ã", "%%C3%%A3")
+                :gsub("ç", "%%C3%%A7")
+                :gsub("á", "%%C3%%A1")
+                :gsub("é", "%%C3%%A9")
+                :gsub("í", "%%C3%%AD")
+                :gsub("ó", "%%C3%%B3")
+                :gsub("ú", "%%C3%%BA")
 
         local raw =
             "https://raw.githubusercontent.com/" ..
             "Matheuskauanjg/Teste-computer/main/" ..
-            encoded
+            fixed
 
         table.insert(songs, {
             name = file.name,
@@ -73,11 +85,6 @@ local current = 1
 local volume = 1
 local loopMode = false
 
-local function clear()
-    term.clear()
-    term.setCursorPos(1,1)
-end
-
 local function drawMenu()
     clear()
 
@@ -95,7 +102,9 @@ local function drawMenu()
             prefix = "> "
         end
 
-        local clean = song.name:gsub("%.dfpwm","")
+        local clean =
+            song.name
+                :gsub("%.dfpwm","")
 
         print(prefix..i.." - "..clean)
     end
@@ -110,55 +119,22 @@ local function drawMenu()
     print("[Q] Sair")
 end
 
-local function downloadSong(url)
-    if fs.exists("temp.dfpwm") then
-        fs.delete("temp.dfpwm")
-    end
-
-    local req = http.get(url)
-
-    if not req then
-        return false
-    end
-
-    local content = req.readAll()
-
-    req.close()
-
-    local file = fs.open("temp.dfpwm", "wb")
-
-    if not file then
-        return false
-    end
-
-    file.write(content)
-    file.close()
-
-    return true
-end
-
 local function playSong(song)
     clear()
 
-    print("Baixando...")
+    print("Streaming:")
     print(song.name)
     print("")
+    print("Conectando...")
+    print("")
 
-    local ok = downloadSong(song.url)
+    local request = http.get(song.url)
 
-    if not ok then
-        print("Erro ao baixar!")
+    if not request then
+        print("Erro ao conectar!")
         print("")
         print(song.url)
         sleep(3)
-        return
-    end
-
-    local file = fs.open("temp.dfpwm", "rb")
-
-    if not file then
-        print("Erro ao abrir audio!")
-        sleep(2)
         return
     end
 
@@ -170,7 +146,7 @@ local function playSong(song)
     local decoder = dfpwm.make_decoder()
 
     while true do
-        local chunk = file.read(16 * 1024)
+        local chunk = request.read(16 * 1024)
 
         if not chunk then
             break
@@ -185,7 +161,7 @@ local function playSong(song)
         end
     end
 
-    file.close()
+    request.close()
 end
 
 while true do
@@ -194,11 +170,13 @@ while true do
     local _, key = os.pullEvent("key")
 
     if key == keys.enter then
+
         repeat
             playSong(songs[current])
         until not loopMode
 
     elseif key == keys.n then
+
         current = current + 1
 
         if current > #songs then
@@ -206,6 +184,7 @@ while true do
         end
 
     elseif key == keys.p then
+
         current = current - 1
 
         if current < 1 then
@@ -213,15 +192,19 @@ while true do
         end
 
     elseif key == keys.l then
+
         loopMode = not loopMode
 
     elseif key == keys.minus then
+
         volume = math.max(0.2, volume - 0.2)
 
     elseif key == keys.equals then
+
         volume = math.min(3, volume + 0.2)
 
     elseif key == keys.q then
+
         clear()
         print("Radio desligada.")
         break
