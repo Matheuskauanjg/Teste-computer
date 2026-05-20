@@ -1,4 +1,4 @@
-local repo = "https://api.github.com/repos/Matheuskauanjg/Teste-computer/contents"
+local repoApi = "https://api.github.com/repos/Matheuskauanjg/Teste-computer/contents"
 
 local dfpwm = require("cc.audio.dfpwm")
 
@@ -26,7 +26,12 @@ if #speakers == 0 then
     return
 end
 
-local response = http.get(repo)
+term.clear()
+term.setCursorPos(1,1)
+
+print("Buscando musicas...")
+
+local response = http.get(repoApi)
 
 if not response then
     print("Erro ao acessar GitHub!")
@@ -40,9 +45,17 @@ local songs = {}
 
 for _, file in ipairs(data) do
     if file.name and file.name:match("%.dfpwm$") then
+
+        local encoded = textutils.urlEncode(file.name)
+
+        local raw =
+            "https://raw.githubusercontent.com/" ..
+            "Matheuskauanjg/Teste-computer/main/" ..
+            encoded
+
         table.insert(songs, {
             name = file.name,
-            url = file.download_url
+            url = raw
         })
     end
 end
@@ -59,7 +72,6 @@ end)
 local current = 1
 local volume = 1
 local loopMode = false
-local playing = false
 
 local function clear()
     term.clear()
@@ -83,9 +95,9 @@ local function drawMenu()
             prefix = "> "
         end
 
-        local name = song.name:gsub("%.dfpwm","")
+        local clean = song.name:gsub("%.dfpwm","")
 
-        print(prefix..i.." - "..name)
+        print(prefix..i.." - "..clean)
     end
 
     print("")
@@ -103,18 +115,24 @@ local function downloadSong(url)
         fs.delete("temp.dfpwm")
     end
 
-    local request = http.get(url)
+    local req = http.get(url)
 
-    if not request then
+    if not req then
         return false
     end
 
+    local content = req.readAll()
+
+    req.close()
+
     local file = fs.open("temp.dfpwm", "wb")
 
-    file.write(request.readAll())
+    if not file then
+        return false
+    end
 
+    file.write(content)
     file.close()
-    request.close()
 
     return true
 end
@@ -130,7 +148,9 @@ local function playSong(song)
 
     if not ok then
         print("Erro ao baixar!")
-        sleep(2)
+        print("")
+        print(song.url)
+        sleep(3)
         return
     end
 
