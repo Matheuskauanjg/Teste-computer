@@ -6,9 +6,19 @@ local dfpwm = require("cc.audio.dfpwm")
 local speakers = {}
 
 for _, name in ipairs(peripheral.getNames()) do
-    if peripheral.hasType(name, "speaker") then
+    local ok, result = pcall(peripheral.hasType, name, "speaker")
+
+    if ok and result then
         table.insert(speakers, peripheral.wrap(name))
     end
+end
+
+if #speakers == 0 then
+    term.clear()
+    term.setCursorPos(1,1)
+
+    print("Nenhum speaker encontrado!")
+    return
 end
 
 local function clear()
@@ -17,27 +27,12 @@ local function clear()
 end
 
 clear()
+print("Conectando GitHub...")
 
-if #speakers == 0 then
-    print("Nenhum speaker encontrado!")
-    print("")
-    print("Perifericos detectados:")
-    print("")
-
-    for _, name in ipairs(peripheral.getNames()) do
-        print("- "..name)
-    end
-
-    return
-end
-
-print("Conectando ao GitHub...")
-sleep(1)
-
-local response = http.get(repoApi)
+local response = http.get(repoApi, nil, true)
 
 if not response then
-    print("Erro ao acessar GitHub!")
+    print("Erro GitHub!")
     return
 end
 
@@ -47,6 +42,7 @@ response.close()
 local songs = {}
 
 for _, file in ipairs(data) do
+
     if file.name and file.name:match("%.dfpwm$") then
 
         local fixed =
@@ -86,16 +82,17 @@ local volume = 1
 local loopMode = false
 
 local function drawMenu()
+
     clear()
 
-    print("=== RADIO GITHUB ===")
+    print("=== RADIO ===")
     print("")
-    print("Speakers: "..#speakers)
     print("Volume: "..string.format("%.1f", volume))
     print("Loop: "..tostring(loopMode))
     print("")
 
     for i, song in ipairs(songs) do
+
         local prefix = "  "
 
         if i == current then
@@ -120,32 +117,27 @@ local function drawMenu()
 end
 
 local function playSong(song)
+
     clear()
 
-    print("Streaming:")
+    print("Tocando:")
     print(song.name)
-    print("")
-    print("Conectando...")
-    print("")
-
-    local request = http.get(song.url)
-
-    if not request then
-        print("Erro ao conectar!")
-        print("")
-        print(song.url)
-        sleep(3)
-        return
-    end
-
-    print("Tocando...")
     print("")
     print("Volume: "..string.format("%.1f", volume))
     print("")
 
+    local request = http.get(song.url, nil, true)
+
+    if not request then
+        print("Erro ao conectar!")
+        sleep(2)
+        return
+    end
+
     local decoder = dfpwm.make_decoder()
 
     while true do
+
         local chunk = request.read(16 * 1024)
 
         if not chunk then
@@ -154,17 +146,33 @@ local function playSong(song)
 
         local buffer = decoder(chunk)
 
-        for _, speaker in ipairs(speakers) do
-            while not speaker.playAudio(buffer, volume) do
+        local waiting = false
+
+        repeat
+
+            waiting = false
+
+            for _, speaker in ipairs(speakers) do
+
+                local ok = speaker.playAudio(buffer, volume)
+
+                if not ok then
+                    waiting = true
+                end
+            end
+
+            if waiting then
                 os.pullEvent("speaker_audio_empty")
             end
-        end
+
+        until not waiting
     end
 
     request.close()
 end
 
 while true do
+
     drawMenu()
 
     local _, key = os.pullEvent("key")
