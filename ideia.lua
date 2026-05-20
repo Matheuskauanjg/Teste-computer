@@ -4,41 +4,46 @@ local dfpwm = require("cc.audio.dfpwm")
 
 local speakers = {}
 
-for _, name in pairs(peripheral.getNames()) do
+for _, name in ipairs(peripheral.getNames()) do
     if peripheral.hasType(name, "speaker") then
         table.insert(speakers, peripheral.wrap(name))
     end
 end
 
 if #speakers == 0 then
+    term.clear()
+    term.setCursorPos(1,1)
+
     print("Nenhum speaker encontrado!")
     print("")
     print("Perifericos encontrados:")
+    print("")
 
-    for _, name in pairs(peripheral.getNames()) do
+    for _, name in ipairs(peripheral.getNames()) do
         print("- "..name)
     end
 
     return
 end
 
-print(#speakers.." speaker(s) encontrado(s)!")
-
 local response = http.get(repo)
 
 if not response then
-    print("Erro ao acessar GitHub")
+    print("Erro ao acessar GitHub!")
     return
 end
 
-local files = textutils.unserializeJSON(response.readAll())
+local data = textutils.unserializeJSON(response.readAll())
 response.close()
 
 local songs = {}
 
-for _, file in pairs(files) do
-    if file.name:match("%.dfpwm$") then
-        table.insert(songs, file)
+for _, file in ipairs(data) do
+    if file.name and file.name:match("%.dfpwm$") then
+        table.insert(songs, {
+            name = file.name,
+            url = file.download_url
+        })
     end
 end
 
@@ -47,9 +52,14 @@ if #songs == 0 then
     return
 end
 
+table.sort(songs, function(a,b)
+    return a.name < b.name
+end)
+
 local current = 1
 local volume = 1
-local loop = false
+local loopMode = false
+local playing = false
 
 local function clear()
     term.clear()
@@ -63,7 +73,7 @@ local function drawMenu()
     print("")
     print("Speakers: "..#speakers)
     print("Volume: "..string.format("%.1f", volume))
-    print("Loop: "..tostring(loop))
+    print("Loop: "..tostring(loopMode))
     print("")
 
     for i, song in ipairs(songs) do
@@ -73,7 +83,9 @@ local function drawMenu()
             prefix = "> "
         end
 
-        print(prefix..i.." - "..song.name)
+        local name = song.name:gsub("%.dfpwm","")
+
+        print(prefix..i.." - "..name)
     end
 
     print("")
@@ -86,25 +98,54 @@ local function drawMenu()
     print("[Q] Sair")
 end
 
-local function playSong(song)
-    clear()
-
-    print("Baixando:")
-    print(song.name)
-
+local function downloadSong(url)
     if fs.exists("temp.dfpwm") then
         fs.delete("temp.dfpwm")
     end
 
-    shell.run("wget "..song.download_url.." temp.dfpwm")
+    local request = http.get(url)
+
+    if not request then
+        return false
+    end
+
+    local file = fs.open("temp.dfpwm", "wb")
+
+    file.write(request.readAll())
+
+    file.close()
+    request.close()
+
+    return true
+end
+
+local function playSong(song)
+    clear()
+
+    print("Baixando...")
+    print(song.name)
+    print("")
+
+    local ok = downloadSong(song.url)
+
+    if not ok then
+        print("Erro ao baixar!")
+        sleep(2)
+        return
+    end
 
     local file = fs.open("temp.dfpwm", "rb")
 
     if not file then
-        print("Erro ao abrir audio")
+        print("Erro ao abrir audio!")
         sleep(2)
         return
     end
+
+    print("Tocando...")
+    print("")
+    print("Volume: "..string.format("%.1f", volume))
+    print("")
 
     local decoder = dfpwm.make_decoder()
 
@@ -130,12 +171,12 @@ end
 while true do
     drawMenu()
 
-    local event, key = os.pullEvent("key")
+    local _, key = os.pullEvent("key")
 
     if key == keys.enter then
         repeat
             playSong(songs[current])
-        until not loop
+        until not loopMode
 
     elseif key == keys.n then
         current = current + 1
@@ -152,7 +193,7 @@ while true do
         end
 
     elseif key == keys.l then
-        loop = not loop
+        loopMode = not loopMode
 
     elseif key == keys.minus then
         volume = math.max(0.2, volume - 0.2)
@@ -162,7 +203,7 @@ while true do
 
     elseif key == keys.q then
         clear()
-        print("Fechando radio...")
+        print("Radio desligada.")
         break
     end
 end
