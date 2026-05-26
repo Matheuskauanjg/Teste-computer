@@ -1,5 +1,4 @@
-local repoApi =
-    "https://api.github.com/repos/Matheuskauanjg/Teste-computer/contents"
+local repoApi = "https://api.github.com/repos/Matheuskauanjg/Teste-computer/contents"
 
 local dfpwm = require("cc.audio.dfpwm")
 
@@ -12,20 +11,25 @@ for _, name in ipairs(peripheral.getNames()) do
 end
 
 if #speakers == 0 then
-    term.clear(); term.setCursorPos(1,1)
+    term.clear()
+    term.setCursorPos(1,1)
     print("Nenhum speaker encontrado!")
     return
 end
 
 local function clear()
-    term.clear(); term.setCursorPos(1,1)
+    term.clear()
+    term.setCursorPos(1,1)
 end
 
 clear()
 print("Conectando GitHub...")
 
 local response = http.get(repoApi, nil, true)
-if not response then print("Erro GitHub!") return end
+if not response then
+    print("Erro GitHub!")
+    return
+end
 
 local data = textutils.unserializeJSON(response.readAll())
 response.close()
@@ -33,28 +37,21 @@ response.close()
 local songs = {}
 for _, file in ipairs(data) do
     if file.name and file.name:match("%.dfpwm$") then
-        local fixed = file.name
-            :gsub(" ",  "%%20")
-            :gsub("ã", "%%C3%%A3")
-            :gsub("ç", "%%C3%%A7")
-            :gsub("á", "%%C3%%A1")
-            :gsub("é", "%%C3%%A9")
-            :gsub("í", "%%C3%%AD")
-            :gsub("ó", "%%C3%%B3")
-            :gsub("ú", "%%C3%%BA")
-        local raw =
-            "https://raw.githubusercontent.com/" ..
-            "Matheuskauanjg/Teste-computer/main/" .. fixed
+        local fixed = file.name:gsub(" ", "%%20"):gsub("ã", "%%C3%%A3"):gsub("ç", "%%C3%%A7"):gsub("á", "%%C3%%A1"):gsub("é", "%%C3%%A9"):gsub("í", "%%C3%%AD"):gsub("ó", "%%C3%%B3"):gsub("ú", "%%C3%%BA")
+        local raw = "https://raw.githubusercontent.com/Matheuskauanjg/Teste-computer/main/" .. fixed
         table.insert(songs, { name = file.name, url = raw })
     end
 end
 
-if #songs == 0 then print("Nenhuma musica encontrada!") return end
+if #songs == 0 then
+    print("Nenhuma musica encontrada!")
+    return
+end
+
 table.sort(songs, function(a,b) return a.name < b.name end)
 
 local current = 1
 
--- Estado compartilhado entre threads via tabela (passagem por referência)
 local state = {
     volume = 1,
     loop   = false,
@@ -113,14 +110,13 @@ local function audioThread(song)
         repeat
             waiting = false
             for _, speaker in ipairs(speakers) do
-                -- Lê state.volume aqui: sempre pega o valor mais recente
                 local ok = speaker.playAudio(buffer, state.volume)
                 if not ok then waiting = true end
             end
             if waiting then
                 os.pullEvent("speaker_audio_empty")
             end
-        until not waiting or state.stop
+        until (not waiting or state.stop)
     end
 
     request.close()
@@ -132,4 +128,65 @@ local function keyThread()
         drawPlayer()
         local _, key = os.pullEvent("key")
 
-        if
+        if key == keys.q then
+            state.action = "quit"
+            state.stop = true
+        elseif key == keys.n then
+            state.action = "next"
+            state.stop = true
+        elseif key == keys.p then
+            state.action = "prev"
+            state.stop = true
+        elseif key == keys.l then
+            state.loop = not state.loop
+        elseif key == keys.equals then
+            state.volume = math.min(3, state.volume + 0.2)
+        elseif key == keys.minus then
+            state.volume = math.max(0.2, state.volume - 0.2)
+        end
+    end
+end
+
+local function playSong(song)
+    state.stop = false
+    state.action = nil
+    parallel.waitForAny(function() audioThread(song) end, function() keyThread() end)
+end
+
+while true do
+    drawMenu()
+    local _, key = os.pullEvent("key")
+
+    if key == keys.enter then
+        repeat
+            playSong(songs[current])
+            if state.action == "quit" then break end
+            if state.action == "next" then
+                current = current % #songs + 1
+            elseif state.action == "prev" then
+                current = (current - 2) % #songs + 1
+            end
+        until (not state.loop and state.action ~= "next" and state.action ~= "prev")
+
+        if state.action == "quit" then
+            clear()
+            print("Radio desligada.")
+            break
+        end
+
+    elseif key == keys.n then
+        current = current % #songs + 1
+    elseif key == keys.p then
+        current = (current - 2) % #songs + 1
+    elseif key == keys.l then
+        state.loop = not state.loop
+    elseif key == keys.equals then
+        state.volume = math.min(3, state.volume + 0.2)
+    elseif key == keys.minus then
+        state.volume = math.max(0.2, state.volume - 0.2)
+    elseif key == keys.q then
+        clear()
+        print("Radio desligada.")
+        break
+    end
+end
